@@ -1,4 +1,4 @@
-FROM alpine:3.18 as alpine
+FROM alpine:3.21.0 as alpine
 
 RUN apk --no-cache --no-progress add \
     build-base \
