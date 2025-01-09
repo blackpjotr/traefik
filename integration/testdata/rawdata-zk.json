@@ -53,7 +53,8 @@
       ],
       "service": "api@internal",
       "rule": "PathPrefix(`/api`)",
-      "priority": 2147483646,
+      "ruleSyntax": "v3",
+      "priority": 9223372036854775806,
       "status": "enabled",
       "using": [
         "traefik"
@@ -69,7 +70,8 @@
       ],
       "service": "dashboard@internal",
       "rule": "PathPrefix(`/`)",
-      "priority": 2147483645,
+      "ruleSyntax": "v3",
+      "priority": 9223372036854775805,
       "status": "enabled",
       "using": [
         "traefik"

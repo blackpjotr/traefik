@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/traefik/v3/pkg/ip"
 	"github.com/traefik/traefik/v3/pkg/middlewares/requestdecorator"
-	"golang.org/x/exp/slices"
 )
 
 var httpFuncs = map[string]func(*matchersTree, ...string) error{
@@ -264,7 +264,7 @@ func queryRegexp(tree *matchersTree, queries ...string) error {
 
 // IsASCII checks if the given string contains only ASCII characters.
 func IsASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] >= utf8.RuneSelf {
 			return false
 		}

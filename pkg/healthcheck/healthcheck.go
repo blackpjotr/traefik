@@ -50,11 +50,12 @@ type ServiceHealthChecker struct {
 
 	metrics metricsHealthCheck
 
-	client  *http.Client
-	targets map[string]*url.URL
+	client      *http.Client
+	targets     map[string]*url.URL
+	serviceName string
 }
 
-func NewServiceHealthChecker(ctx context.Context, metrics metricsHealthCheck, config *dynamic.ServerHealthCheck, service StatusSetter, info *runtime.ServiceInfo, transport http.RoundTripper, targets map[string]*url.URL) *ServiceHealthChecker {
+func NewServiceHealthChecker(ctx context.Context, metrics metricsHealthCheck, config *dynamic.ServerHealthCheck, service StatusSetter, info *runtime.ServiceInfo, transport http.RoundTripper, targets map[string]*url.URL, serviceName string) *ServiceHealthChecker {
 	logger := log.Ctx(ctx)
 
 	interval := time.Duration(config.Interval)
@@ -69,11 +70,6 @@ func NewServiceHealthChecker(ctx context.Context, metrics metricsHealthCheck, co
 		timeout = time.Duration(dynamic.DefaultHealthCheckTimeout)
 	}
 
-	if timeout >= interval {
-		logger.Warn().Msgf("Health check timeout should be lower than the health check interval. Interval set to timeout + 1 second (%s).", interval)
-		interval = timeout + time.Second
-	}
-
 	client := &http.Client{
 		Transport: transport,
 	}
@@ -85,14 +81,15 @@ func NewServiceHealthChecker(ctx context.Context, metrics metricsHealthCheck, co
 	}
 
 	return &ServiceHealthChecker{
-		balancer: service,
-		info:     info,
-		config:   config,
-		interval: interval,
-		timeout:  timeout,
-		targets:  targets,
-		client:   client,
-		metrics:  metrics,
+		balancer:    service,
+		info:        info,
+		config:      config,
+		interval:    interval,
+		timeout:     timeout,
+		targets:     targets,
+		serviceName: serviceName,
+		client:      client,
+		metrics:     metrics,
 	}
 }
 
@@ -141,7 +138,7 @@ func (shc *ServiceHealthChecker) Launch(ctx context.Context) {
 				shc.info.UpdateServerStatus(target.String(), statusStr)
 
 				shc.metrics.ServiceServerUpGauge().
-					With("service", proxyName, "url", target.String()).
+					With("service", shc.serviceName, "url", target.String()).
 					Set(serverUpMetricValue)
 			}
 		}
@@ -260,8 +257,8 @@ func (shc *ServiceHealthChecker) checkHealthGRPC(ctx context.Context, serverURL 
 		return fmt.Errorf("gRPC health check failed: %w", err)
 	}
 
-	if resp.Status != healthpb.HealthCheckResponse_SERVING {
-		return fmt.Errorf("received gRPC status code: %v", resp.Status)
+	if resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+		return fmt.Errorf("received gRPC status code: %v", resp.GetStatus())
 	}
 
 	return nil

@@ -47,7 +47,7 @@ func TestGetBestCertificate(t *testing.T) {
 			expectedCert:  "*.snitest.com",
 		},
 		{
-			desc:          "Best Match with dynamic wildcard only, case insensitive",
+			desc:          "Best Match with dynamic wildcard only, case-insensitive",
 			domainToCheck: "bar.www.snitest.com",
 			dynamicCert:   "*.www.snitest.com",
 			expectedCert:  "*.www.snitest.com",
@@ -56,7 +56,6 @@ func TestGetBestCertificate(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 			dynamicMap := map[string]*tls.Certificate{}

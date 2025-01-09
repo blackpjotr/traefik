@@ -12,9 +12,17 @@ A Story of Labels & Containers
 
 Attach labels to your containers and let Traefik do the rest!
 
+One of the best feature of Traefik is to delegate the routing configuration to the application level.
+With Docker, Traefik can leverage labels attached to a container to generate routing rules.
+
+!!! warning "Labels & sensitive data"
+
+    We recommend to *not* use labels to store sensitive data (certificates, credentials, etc).
+    Instead, we recommend to store sensitive data in a safer storage (secrets, file, etc).
+
 ## Configuration Examples
 
-??? example "Configuring Docker & Deploying / Exposing Services"
+??? example "Configuring Docker & Deploying / Exposing one Service"
 
     Enabling the docker provider
 
@@ -87,7 +95,7 @@ Attach labels to your containers and let Traefik do the rest!
 
 !!! info "Labels"
 
-    - Labels are case insensitive.
+    - Labels are case-insensitive.
     - The complete list of labels can be found in [the reference page](../../reference/dynamic-configuration/docker.md).
 
 ### General
@@ -101,7 +109,7 @@ and the router automatically gets a rule defined by `defaultRule` (if no rule fo
 
 --8<-- "content/routing/providers/service-by-label.md"
 
-??? example "Automatic service assignment with labels"
+??? example "Automatic assignment with one Service"
 
     With labels in a compose file
 
@@ -112,7 +120,7 @@ and the router automatically gets a rule defined by `defaultRule` (if no rule fo
       - "traefik.http.services.myservice.loadbalancer.server.port=80"
     ```
 
-??? example "Automatic service creation and assignment with labels"
+??? example "Automatic service creation with one Router"
 
     With labels in a compose file
 
@@ -121,6 +129,18 @@ and the router automatically gets a rule defined by `defaultRule` (if no rule fo
       # no service specified or defined and yet one gets automatically created
       # and assigned to router myproxy.
       - "traefik.http.routers.myproxy.rule=Host(`example.net`)"
+    ```
+
+??? example "Explicit definition with one Service"
+
+    With labels in a compose file
+
+    ```yaml
+    labels:
+      - traefik.http.routers.www-router.rule=Host(`example-a.com`)
+      # Explicit link between the router and the service
+      - traefik.http.routers.www-router.service=www-service
+      - traefik.http.services.www-service.loadbalancer.server.port=8000
     ```
 
 ### Routers
@@ -204,6 +224,30 @@ For example, to change the rule, you could add the label ```traefik.http.routers
     - "traefik.http.routers.myrouter.tls.options=foobar"
     ```
 
+??? info "`traefik.http.routers.<router_name>.observability.accesslogs`"
+
+    See accesslogs [option](../routers/index.md#accesslogs) for more information.
+    
+    ```yaml
+    - "traefik.http.routers.myrouter.observability.accesslogs=true"
+    ```
+
+??? info "`traefik.http.routers.<router_name>.observability.metrics`"
+
+    See metrics [option](../routers/index.md#metrics) for more information.
+    
+    ```yaml
+    - "traefik.http.routers.myrouter.observability.metrics=true"
+    ```
+
+??? info "`traefik.http.routers.<router_name>.observability.tracing`"
+
+    See tracing [option](../routers/index.md#tracing) for more information.
+    
+    ```yaml
+    - "traefik.http.routers.myrouter.observability.tracing=true"
+    ```
+
 ??? info "`traefik.http.routers.<router_name>.priority`"
 
     See [priority](../routers/index.md#priority) for more information.
@@ -237,6 +281,15 @@ you'd add the label `traefik.http.services.<name-of-your-choice>.loadbalancer.pa
 
     ```yaml
     - "traefik.http.services.myservice.loadbalancer.server.scheme=http"
+    ```
+
+??? info "`traefik.http.services.<service_name>.loadbalancer.server.url`"
+
+    Defines the service URL.
+    This option cannot be used in combination with `port` or `scheme` definition.
+
+    ```yaml
+    - "traefik.http.services.myservice.loadbalancer.server.url=http://foobar:8080"
     ```
 
 ??? info "`traefik.http.services.<service_name>.loadbalancer.serverstransport`"
@@ -360,6 +413,14 @@ you'd add the label `traefik.http.services.<name-of-your-choice>.loadbalancer.pa
     - "traefik.http.services.myservice.loadbalancer.sticky.cookie.name=foobar"
     ```
 
+??? info "`traefik.http.services.<service_name>.loadbalancer.sticky.cookie.path`"
+
+    See [sticky sessions](../services/index.md#sticky-sessions) for more information.
+
+    ```yaml
+    - "traefik.http.services.myservice.loadbalancer.sticky.cookie.path=/foobar"
+    ```
+
 ??? info "`traefik.http.services.<service_name>.loadbalancer.sticky.cookie.secure`"
 
     See [sticky sessions](../services/index.md#sticky-sessions) for more information.
@@ -374,6 +435,14 @@ you'd add the label `traefik.http.services.<name-of-your-choice>.loadbalancer.pa
 
     ```yaml
     - "traefik.http.services.myservice.loadbalancer.sticky.cookie.samesite=none"
+    ```
+
+??? info "`traefik.http.services.<service_name>.loadbalancer.sticky.cookie.maxage`"
+
+    See [sticky sessions](../services/index.md#sticky-sessions) for more information.
+
+    ```yaml
+    - "traefik.http.services.myservice.loadbalancer.sticky.cookie.maxage=42"
     ```
 
 ??? info "`traefik.http.services.<service_name>.loadbalancer.responseforwarding.flushinterval`"
@@ -417,7 +486,7 @@ More information about available middlewares in the dedicated [middlewares secti
 
 You can declare TCP Routers and/or Services using labels.
 
-??? example "Declaring TCP Routers and Services"
+??? example "Declaring TCP Routers with one Service"
 
     ```yaml
        services:
@@ -555,7 +624,7 @@ You can declare TCP Routers and/or Services using labels.
 
 You can declare UDP Routers and/or Services using labels.
 
-??? example "Declaring UDP Routers and Services"
+??? example "Declaring UDP Routers with one Service"
 
     ```yaml
        services:

@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/opentracing/opentracing-go/ext"
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
-	"github.com/traefik/traefik/v3/pkg/tracing"
+	"github.com/traefik/traefik/v3/pkg/middlewares/observability"
 	"github.com/traefik/traefik/v3/pkg/types"
 	"github.com/vulcand/oxy/v2/utils"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Compile time validation that the response recorder implements http interfaces correctly.
@@ -24,7 +24,7 @@ var (
 	_ middlewares.Stateful = &codeCatcher{}
 )
 
-const typeName = "customError"
+const typeName = "CustomError"
 
 type serviceBuilder interface {
 	BuildHTTP(ctx context.Context, serviceName string) (http.Handler, error)
@@ -62,16 +62,16 @@ func New(ctx context.Context, next http.Handler, config dynamic.ErrorPage, servi
 	}, nil
 }
 
-func (c *customErrors) GetTracingInformation() (string, ext.SpanKindEnum) {
-	return c.name, tracing.SpanKindNoneEnum
+func (c *customErrors) GetTracingInformation() (string, string, trace.SpanKind) {
+	return c.name, typeName, trace.SpanKindInternal
 }
 
 func (c *customErrors) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	logger := middlewares.GetLogger(req.Context(), c.name, typeName)
 
 	if c.backendHandler == nil {
-		logger.Error().Msg("Error pages: no backend handler.")
-		tracing.SetErrorWithEvent(req, "Error pages: no backend handler.")
+		logger.Error().Msg("No backend handler.")
+		observability.SetStatusErrorf(req.Context(), "No backend handler.")
 		c.next.ServeHTTP(rw, req)
 		return
 	}
@@ -95,13 +95,13 @@ func (c *customErrors) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	pageReq, err := newRequest("http://" + req.Host + query)
 	if err != nil {
-		logger.Error().Err(err).Send()
+		logger.Error().Msgf("Unable to create error page request: %v", err)
+		observability.SetStatusErrorf(req.Context(), "Unable to create error page request: %v", err)
 		http.Error(rw, http.StatusText(code), code)
 		return
 	}
 
 	utils.CopyHeaders(pageReq.Header, req.Header)
-
 	c.backendHandler.ServeHTTP(newCodeModifier(rw, code),
 		pageReq.WithContext(req.Context()))
 }
@@ -235,7 +235,7 @@ func (cc *codeCatcher) Flush() {
 	// since we want to serve the ones from the error page,
 	// so we just don't flush.
 	// (e.g., To prevent superfluous WriteHeader on request with a
-	// `Transfert-Encoding: chunked` header).
+	// `Transfer-Encoding: chunked` header).
 	if cc.caughtFilteredCode {
 		return
 	}

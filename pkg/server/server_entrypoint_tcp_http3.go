@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/traefik/v3/pkg/config/static"
@@ -33,7 +34,8 @@ func newHTTP3Server(ctx context.Context, configuration *static.EntryPoint, https
 		return nil, errors.New("advertised port must be greater than or equal to zero")
 	}
 
-	conn, err := net.ListenPacket("udp", configuration.GetAddress())
+	listenConfig := newListenConfig(configuration)
+	conn, err := listenConfig.ListenPacket(ctx, "udp", configuration.GetAddress())
 	if err != nil {
 		return nil, fmt.Errorf("starting listener: %w", err)
 	}
@@ -50,12 +52,15 @@ func newHTTP3Server(ctx context.Context, configuration *static.EntryPoint, https
 		Port:      configuration.HTTP3.AdvertisedPort,
 		Handler:   httpsServer.Server.(*http.Server).Handler,
 		TLSConfig: &tls.Config{GetConfigForClient: h3.getGetConfigForClient},
+		QUICConfig: &quic.Config{
+			Allow0RTT: false,
+		},
 	}
 
 	previousHandler := httpsServer.Server.(*http.Server).Handler
 
 	httpsServer.Server.(*http.Server).Handler = http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		if err := h3.Server.SetQuicHeaders(rw.Header()); err != nil {
+		if err := h3.Server.SetQUICHeaders(rw.Header()); err != nil {
 			log.Ctx(ctx).Error().Err(err).Msg("Failed to set HTTP3 headers")
 		}
 

@@ -3,18 +3,21 @@ package ecs
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/ssm"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog"
@@ -119,20 +122,24 @@ func (p *Provider) createClient(logger zerolog.Logger) (*awsClient, error) {
 		p.Region = identity.Region
 	}
 
-	cfg := &aws.Config{
-		Credentials: credentials.NewChainCredentials(
-			[]credentials.Provider{
-				&credentials.StaticProvider{
-					Value: credentials.Value{
-						AccessKeyID:     p.AccessKeyID,
-						SecretAccessKey: p.SecretAccessKey,
-					},
+	cfg := aws.NewConfig().
+		WithCredentials(credentials.NewChainCredentials([]credentials.Provider{
+			&credentials.StaticProvider{
+				Value: credentials.Value{
+					AccessKeyID:     p.AccessKeyID,
+					SecretAccessKey: p.SecretAccessKey,
 				},
-				&credentials.EnvProvider{},
-				&credentials.SharedCredentialsProvider{},
-				defaults.RemoteCredProvider(*(defaults.Config()), defaults.Handlers()),
-			}),
-	}
+			},
+			&credentials.EnvProvider{},
+			&credentials.SharedCredentialsProvider{},
+			defaults.RemoteCredProvider(*(defaults.Config()), defaults.Handlers()),
+			stscreds.NewWebIdentityRoleProviderWithOptions(
+				sts.New(sess),
+				os.Getenv("AWS_ROLE_ARN"),
+				"",
+				stscreds.FetchTokenPath(os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")),
+			),
+		}))
 
 	// Set the region if it is defined by the user or resolved from the EC2 metadata.
 	if p.Region != "" {
@@ -319,7 +326,7 @@ func (p *Provider) listInstances(ctx context.Context, client *awsClient) ([]ecsI
 				}
 
 				var mach *machine
-				if len(task.Attachments) != 0 {
+				if aws.StringValue(taskDef.NetworkMode) == "awsvpc" && len(task.Attachments) != 0 {
 					if len(container.NetworkInterfaces) == 0 {
 						logger.Error().Msgf("Skip container %s: no network interfaces", aws.StringValue(container.Name))
 						continue
@@ -402,7 +409,7 @@ func (p *Provider) listInstances(ctx context.Context, client *awsClient) ([]ecsI
 }
 
 func (p *Provider) lookupMiInstances(ctx context.Context, client *awsClient, clusterName *string, ecsDatas map[string]*ecs.Task) (map[string]*ssm.InstanceInformation, error) {
-	instanceIds := make(map[string]string)
+	instanceIDs := make(map[string]string)
 	miInstances := make(map[string]*ssm.InstanceInformation)
 
 	var containerInstancesArns []*string
@@ -424,7 +431,7 @@ func (p *Provider) lookupMiInstances(ctx context.Context, client *awsClient, clu
 		}
 
 		for _, container := range resp.ContainerInstances {
-			instanceIds[aws.StringValue(container.Ec2InstanceId)] = aws.StringValue(container.ContainerInstanceArn)
+			instanceIDs[aws.StringValue(container.Ec2InstanceId)] = aws.StringValue(container.ContainerInstanceArn)
 
 			// Disallow EC2 Instance IDs
 			// This prevents considering EC2 instances in ECS
@@ -452,7 +459,7 @@ func (p *Provider) lookupMiInstances(ctx context.Context, client *awsClient, clu
 				if len(page.InstanceInformationList) > 0 {
 					for _, i := range page.InstanceInformationList {
 						if i.InstanceId != nil {
-							miInstances[instanceIds[aws.StringValue(i.InstanceId)]] = i
+							miInstances[instanceIDs[aws.StringValue(i.InstanceId)]] = i
 						}
 					}
 				}
@@ -468,7 +475,7 @@ func (p *Provider) lookupMiInstances(ctx context.Context, client *awsClient, clu
 }
 
 func (p *Provider) lookupEc2Instances(ctx context.Context, client *awsClient, clusterName *string, ecsDatas map[string]*ecs.Task) (map[string]*ec2.Instance, error) {
-	instanceIds := make(map[string]string)
+	instanceIDs := make(map[string]string)
 	ec2Instances := make(map[string]*ec2.Instance)
 
 	var containerInstancesArns []*string
@@ -490,7 +497,7 @@ func (p *Provider) lookupEc2Instances(ctx context.Context, client *awsClient, cl
 		}
 
 		for _, container := range resp.ContainerInstances {
-			instanceIds[aws.StringValue(container.Ec2InstanceId)] = aws.StringValue(container.ContainerInstanceArn)
+			instanceIDs[aws.StringValue(container.Ec2InstanceId)] = aws.StringValue(container.ContainerInstanceArn)
 			// Disallow Instance IDs of the form mi-*
 			// This prevents considering external instances in ECS Anywhere setups
 			// and getting InvalidInstanceID.Malformed error when calling the describe-instances endpoint.
@@ -513,7 +520,7 @@ func (p *Provider) lookupEc2Instances(ctx context.Context, client *awsClient, cl
 					for _, r := range page.Reservations {
 						for _, i := range r.Instances {
 							if i.InstanceId != nil {
-								ec2Instances[instanceIds[aws.StringValue(i.InstanceId)]] = i
+								ec2Instances[instanceIDs[aws.StringValue(i.InstanceId)]] = i
 							}
 						}
 					}
